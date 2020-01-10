@@ -12,25 +12,23 @@ import Text.Read (readMaybe)
 
 type CSV' = NonEmpty Record
 
-average :: (Real a, Fractional b) => [a] -> b
-average xs = realToFrac (sum xs) / genericLength xs
+type Column a = [a]
 
-columnIndex :: String -> CSV' -> Either String Int
-columnIndex name =
-  maybe (Left ("Column " <> name <> " not found.")) return
-    . findIndex (name ==)
-    . NE.head
+column :: (Read a) => String -> CSV' -> Either String (Column a)
+column name rows = do
+  i <-
+    maybe (Left ("Column " <> name <> " not found.")) return
+      . findIndex (name ==)
+      $ NE.head rows
+  return . catMaybes . fmap ((=<<) readMaybe . (^? element i)) $ NE.tail rows
 
-column :: Int -> CSV' -> Either String [String]
-column i = return . catMaybes . fmap (^? element i) . NE.tail
+columnAverage :: Column Double -> Double
+columnAverage = (/) <$> sum <*> genericLength
 
-columnAverage :: [String] -> Double
-columnAverage = average . catMaybes . fmap (readMaybe @Double)
+applyToColumn :: (Read a) => (Column a -> b) -> String -> CSV' -> Either String b
+applyToColumn f name = (=<<) (return . f) . column name
 
-applyToColumn :: ([String] -> b) -> String -> CSV' -> Either String b
-applyToColumn f name rows = return . f =<< flip column rows =<< columnIndex name rows
-
-applyToCSVColumn :: ([String] -> b) -> String -> FilePath -> IO (Either String b)
+applyToCSVColumn :: (Read a) => (Column a -> b) -> String -> FilePath -> IO (Either String b)
 applyToCSVColumn f name path = do
   eRows <- parseCSVFromFile path
   return $
